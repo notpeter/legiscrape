@@ -9,28 +9,30 @@ their city's Legistar systems.
 I'm building it for Oakland with the intention that it can be used
 in other cities with minimal modification.
 
-## What can it do?
+## What can it do now?
 
-* It can download audio/video/captions and convert/remux them into a
-combined MP4 file. This file has subtitles, chapters and unlike
-Granicus video downloads, will be a valid MP4 file.
+* Download video and remux into valid MP4
+* Download using multiple connections (2-4x speed up)
+* Manipulate proprietary JSON captions
+  * Create plaintext transcript
+  * Generate standard format captions (SRT and WEBVTT)
+  * Extract Chapter Metadata
+* Combine audio, video, chapters, captions into a single clean MP4
 
-## Show me how
+## Usage:
 
-Install prerequisites:
+Prerequisites:
 * [Python 3.x](https://www.python.org/downloads/) (Tested with 3.6.0)
-* [Homebrew](https://brew.sh/)
-* `brew install ffmpeg mp4box`
-* [Optional] `brew install aria2c`
+* `brew install ffmpeg mp4box aria2c`
 
 ````
 pip3 install legiscrape
-
-
+legiscrape-video 20170314_PublicSafetyCommittee.mp4 "http://oakland.granicus.com/MediaPlayer.php?view_id=2&clip_id=2225"
+````
 
 ## Why?
 
-Granicus (Legistar) video systems suck.
+Legistar and Granicus video are sucky systems.
 
 In my first week trying to report on an Oakland City Council meeting
 I ran into a number of issues which drove me insane:
