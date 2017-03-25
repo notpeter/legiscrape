@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import json
 import logging
 import os
@@ -9,11 +7,9 @@ from urllib.parse import parse_qsl, urlsplit
 
 import requests
 
-#url = 'https://oakland.legistar.com/MeetingDetail.aspx?ID=535644&GUID=6675E5B4-8620-4B3F-B490-F02EAD1A911A'
-#url2 = 'http://207.7.154.121:443/OnDemand/oakland/oakland_b5513380-32c1-4771-954b-d0c034d5f35b.mp4'
 
 def es_search(index, clip_id, search_url='http://search.granicus.com/api/%s/_search'):
-    """Queries the granicus elasticsearch to for video metadata"""
+    """Queries the elasticsearch for video metadata"""
     search_url = search_url % index
     query = {'query': {'match': {'video_id': {'query': clip_id}}}, 'size': 1}
     query = json.dumps(query)
