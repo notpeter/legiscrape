@@ -37,9 +37,9 @@ Legistar and Granicus video are sucky systems.
 In my first week trying to report on an Oakland City Council meeting
 I ran into a number of issues which drove me insane:
 
-1. Chrome/Firefox/Safari don't if you don't have flash. Period.
+1. Chrome/Firefox/Safari can't play video if don't have flash. Period.
 2. MP4 video files aren't always valid MP4 files.
-If VLC can't play it back, good luck seeking, keeping voice sync or
+If VLC can barely play it, good luck seeking, keeping voice sync or
 using a less forgiving player.
 3. No ability to link to timestamp in a video (ala YouTube
 t=15m32s)
