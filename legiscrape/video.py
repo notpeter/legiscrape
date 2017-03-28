@@ -8,9 +8,9 @@ from urllib.parse import parse_qsl, urlsplit
 import requests
 
 
-def es_search(index, clip_id, search_url='http://search.granicus.com/api/%s/_search'):
+def es_search(index, clip_id):
     """Queries the elasticsearch for video metadata"""
-    search_url = search_url % index
+    search_url = 'http://search.granicus.com/api/%s/_search' % index
     query = {'query': {'match': {'video_id': {'query': clip_id}}}, 'size': 1}
     query = json.dumps(query)
     result = requests.post(search_url, data=query)
