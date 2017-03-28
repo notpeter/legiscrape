@@ -63,6 +63,7 @@ class Teletext(object):
                 chapter_title = ' '.join(sub['title'].splitlines()[0].split())
                 metadata.append((sub['time'], chapter_title))
         with open(filename, mode='wt') as output:
+            output.write("WEBVTT\n\n")
             for chapter_num, chapter in enumerate(metadata):
                 title = chapter[1]
                 tc1 = timecode(chapter[0])
