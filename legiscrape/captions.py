@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import html
 import logging
 import os
+from urllib.parse import parse_qsl, urlsplit
+
+import jsonschema
 import requests
-from jsonschema import validate
+
 
 class Teletext(object):
     """Granicus Video JSON Closed Captions to WEBVTT/SRT"""
@@ -13,35 +17,30 @@ class Teletext(object):
     # * Text: {"type": "text", "time": 352.332, "text": "Hello"}
     # * Meta: {"type": "meta", "time": 123.123, ...}
 
-    def __init__(self, captions, file_prefix):
-        self.file_prefix = file_prefix
+    def __init__(self, captions):
         filename = 'granicus-captions.schema.json'
         if os.path.dirname(__file__):
             filename = "%s/%s" % (os.path.dirname(__file__), filename)
-        with open(filename) as jsonschema:
-            schema = json.load(jsonschema)
+        with open(filename) as json_schema:
+            schema = json.load(json_schema)
 
         logging.info('Validating JSON...')
         # Raises ValidationError
-        validate(captions, schema)
+        jsonschema.validate(captions, schema)
         self.captions = captions[0]
-        # Evil 'unicode delete' character '\u007f' present in my test file.
-        # TODO: Delete the character to the left instead of just stripping.
-        #for sub in self.captions:
-        #    if '\u007f' in sub.get('text'):
-        #        sub['text'] = sub['text'].replace('\u007f', '')
+        # clean_title escapes invalid characters
+        for sub in self.captions:
+            sub['text'] = clean_title(sub['text'])
+            if 'title' in sub:
+                sub['title'] = clean_title(sub['title'])
 
-    def filename(self, extension):
-        """Returns extension appended to file_prefix"""
-        return "%s.%s" % (self.file_prefix, extension)
-
-    def export_json(self):
+    def export_json(self, filename):
         """Exports Granicus JSON file"""
         logging.info('Exporting JSON...')
-        with open(self.filename('json'), mode='wt') as output_file:
+        with open(filename, mode='wt') as output_file:
             json.dump(self.captions, output_file)
 
-    def export_chapters(self):
+    def export_chapters(self, filename):
         """Exports chapters.txt file, e.g. "00:04:20,000 Chapter 1"""
         logging.info('Exporting chapters.txt...')
         metadata = []
@@ -49,15 +48,15 @@ class Teletext(object):
             if sub['type'] == 'meta':
                 chapter_title = ' '.join(sub['title'].splitlines()[0].split())
                 metadata.append((timecode(sub['time']), chapter_title))
-        with open(self.filename('chapters.txt'), mode='wt') as chapters:
+        with open(filename, mode='wt') as chapters:
             for chapter in metadata:
                 chapters.write("%s %s\n" % chapter)
         return metadata
 
-    def export_text(self):
+    def export_text(self, filename):
         """Exports simple txt file with everything."""
         logging.info('Exporting text transcription...')
-        with open(self.filename('txt'), mode='wt') as textfile:
+        with open(filename, mode='wt') as textfile:
             for sub in self.captions:
                 fancy_time = timecode(sub['time'])
                 if sub['type'] == 'meta':
@@ -68,7 +67,24 @@ class Teletext(object):
                 elif sub['type'] == 'text':
                     textfile.write("%s %s\n" % (fancy_time, sub['text']))
 
-    def export_srt(self, ttl=3):
+    def export_webvtt(self, filename, ms_per_char=60):
+        """Export WebVTT to filename"""
+        # Unlike SRT, WebVTT can have overlapping cues. 40chars x 60ms = ~2.4sec
+        with open(filename, mode='wt') as out_file:
+            out_file.write("WEBVTT\n\n")
+            for num, sub in enumerate(self.captions):
+                title = sub['text']
+                ttl = len(html.unescape(title)) * ms_per_char * .001
+                # TODO: decide whether varibale length ttls is preferrable
+                ttl = 3.0
+                tc1 = timecode(float(sub['time']))
+                tc2 = timecode(float(sub['time']) + ttl)
+                # Three lines [counter, "00:00:00,0000 --> 00:00:03,0000", title]
+                entry = (num + 1, tc1, tc2, sub['text'])
+                out_file.write("\n".join(["%s", "%s --> %s", "%s"]) % entry)
+                out_file.write("\n\n")
+
+    def export_srt(self, filename, ttl=3):
         """Exports SRT with each title onscreen for specified TTL"""
         # TODO: Replace naive joining & fixed ttl with something more dynamic
         #       Sadly SRT only supports one title on the screen at a time,
@@ -82,57 +98,70 @@ class Teletext(object):
             if not hold_time:
                 hold_time = float(sub['time'])
             if num < len(subs) - 1 and (float(subs[num+1]['time']) - hold_time > ttl):
-                title = sub2srt("\n".join(hold_text), hold_time, ttl)
-                srt.append(title)
+                title = "\n".join(hold_text)
+                tc1 = timecode(float(hold_time), seperator=',')
+                tc2 = timecode(float(hold_time) + ttl, seperator=',')
+                entry = (num + 1, tc1, tc2, title)
+                srt.append("\n".join(["%s", "%s --> %s", "%s"]) % entry)
                 hold_time = None
                 hold_text = []
-        logging.info('Exporting SRT and WEBVTT')
-        with open(self.filename('vtt'), mode='wt') as srt_file:
-            srt_file.write("WEBVTT\n\n")
-            srt_file.write('\n'.join(srt))
-        with open(self.filename('srt'), mode='wt') as srt_file:
+        logging.info('Exporting SRT')
+        with open(filename, mode='wt') as srt_file:
             for num, sub in enumerate(srt):
                 srt_file.write('%s\n%s\n' % (num + 1, sub))
 
-    def export(self):
+    def export(self, file_prefix="pooppants"):
         """Export output files for supported filetype"""
-        self.export_json()
-        self.export_srt()
-        self.export_chapters()
-        self.export_text()
+        self.export_json("%s.%s" % (file_prefix, 'json'))
+        self.export_srt("%s.%s" % (file_prefix, 'srt'))
+        self.export_webvtt("%s.%s" % (file_prefix, 'vtt'))
+        self.export_chapters("%s.%s" % (file_prefix, 'chapters.txt'))
+        self.export_text("%s.%s" % (file_prefix, 'txt'))
 
 
-def timecode(seconds):
+def clean_title(title):
+    """Remove/replace invalid characters from a string"""
+    # https://developer.mozilla.org/en-US/docs/Web/API/WebVTT_API#Cue_payload
+    title = title.replace('&', '&amp;')
+    title = title.replace('<', '&lt;')
+    title = title.replace('>', '&gt;')
+    # '\u007f' (unicode delete' character) in my test file. Not invalid, but evil.
+    title = title.replace('\u007f', '')
+    return title
+
+
+def timecode(seconds, seperator="."):
     """Takes seconds and returns SRT timecode format: e.g. 00:02:36,894"""
     # Leading & trailing zeros matter: 1.5 -> 00:00:01,500
+    # SRT uses ',' before fractional seconds seperator, WebVTT uses '.'
     seconds = float(seconds)
-    return "%(hour)02d:%(minute)02d:%(second)02d,%(ms)03d" % {'hour': seconds // 3600,
-                                                              'minute': seconds // 60 % 60,
-                                                              'second': seconds % 60,
-                                                              'ms': seconds % 1 * 1000}
-
-
-def sub2srt(title, seconds, ttl):
-    """Generate an SRT stanza for a given subtitle"""
-    tc1 = timecode(float(seconds))
-    tc2 = timecode(float(seconds) + ttl)
-    # "00:00:00,0000 --> 00:00:01,0000"
-    return "%s --> %s\n%s\n" % (tc1, tc2, title)
+    timecode_fmt = "%(hour)02d:%(minute)02d:%(second)02d%(ms_seperator)s%(ms)03d"
+    return timecode_fmt % {'hour': seconds // 3600,
+                           'minute': seconds // 60 % 60,
+                           'second': seconds % 60,
+                           'ms': seconds % 1 * 1000,
+                           'ms_seperator': seperator}
 
 
 def main():
+    """CLI Usage"""
     parser = argparse.ArgumentParser(description="Granicus subtitle converter")
-    parser.add_argument("file", help="Output filename (without extension)")
+    parser.add_argument("file", help="Output filename prefix (without ext)",
+                        nargs='?', default="agency_clipid")
     parser.add_argument("url", help="e.g. http://oakland.granicus.com/JSON.php?clip_id=2206")
     parser.add_argument('-v', '--verbose', action='count', default=0)
     args = parser.parse_args()
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
+    if args.file == 'agency_clipid':
+        clip_id = dict(parse_qsl(urlsplit(args.url).query)).get('clip_id', 'clip')
+        agency = urlsplit(args.url).netloc.replace('.granicus.com', '')
+        args.file = "%s_%s" % (agency, clip_id)
     logging.info("Fetching JSON from %s", args.url)
     response = requests.get(args.url)
     json_data = json.loads(response.text)
-    ttxt = Teletext(json_data, args.file)
-    ttxt.export()
+    ttxt = Teletext(json_data)
+    ttxt.export(args.file)
 
 
 if __name__ == '__main__':
