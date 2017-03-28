@@ -33,6 +33,7 @@ class Teletext(object):
             sub['text'] = clean_title(sub['text'])
             if 'title' in sub:
                 sub['title'] = clean_title(sub['title'])
+        logging.info('Gathering metadata...')
 
     def export_json(self, filename):
         """Exports Granicus JSON file"""
@@ -40,18 +41,38 @@ class Teletext(object):
         with open(filename, mode='wt') as output_file:
             json.dump(self.captions, output_file)
 
-    def export_chapters(self, filename):
+    def export_text_chapters(self, filename):
         """Exports chapters.txt file, e.g. "00:04:20,000 Chapter 1"""
         logging.info('Exporting chapters.txt...')
         metadata = []
         for sub in self.captions:
             if sub['type'] == 'meta':
                 chapter_title = ' '.join(sub['title'].splitlines()[0].split())
-                metadata.append((timecode(sub['time']), chapter_title))
-        with open(filename, mode='wt') as chapters:
+                metadata.append((timecode(sub['time'], seperator=','), chapter_title))
+        with open(filename, mode='wt') as output:
             for chapter in metadata:
-                chapters.write("%s %s\n" % chapter)
-        return metadata
+                output.write("%s %s\n" % chapter)
+
+    def export_webvtt_chapters(self, filename):
+        """Exports chapters.vtt file, e.g. "00:00:00.000 --> 00:04:20.000\nChapter 1"""
+        template = "\n".join(["%s", "%s --> %s", "%s"])
+        logging.info('Exporting chapters.vtt...')
+        metadata = []
+        for sub in self.captions:
+            if sub['type'] == 'meta':
+                chapter_title = ' '.join(sub['title'].splitlines()[0].split())
+                metadata.append((sub['time'], chapter_title))
+        with open(filename, mode='wt') as output:
+            for chapter_num, chapter in enumerate(metadata):
+                title = chapter[1]
+                tc1 = timecode(chapter[0])
+                # VTT Chapters are ranges (incl end time) so calculate that.
+                if chapter_num == len(metadata) - 1:
+                    tc2 = timecode(self.captions[-1]['time']) # Time of last subtitle
+                else:
+                    tc2 = timecode(metadata[chapter_num+1][0]) # Time of next chapter
+                output.write("\n".join(["%s", "%s --> %s", "%s", "\n"]) %
+                               (chapter_num, tc1, tc2, title))
 
     def export_text(self, filename):
         """Exports simple txt file with everything."""
@@ -101,21 +122,22 @@ class Teletext(object):
                 title = "\n".join(hold_text)
                 tc1 = timecode(float(hold_time), seperator=',')
                 tc2 = timecode(float(hold_time) + ttl, seperator=',')
-                entry = (num + 1, tc1, tc2, title)
-                srt.append("\n".join(["%s", "%s --> %s", "%s"]) % entry)
+                entry = (tc1, tc2, title)
+                srt.append("\n".join(["%s --> %s", "%s", "\n"]) % entry)
                 hold_time = None
                 hold_text = []
         logging.info('Exporting SRT')
         with open(filename, mode='wt') as srt_file:
             for num, sub in enumerate(srt):
-                srt_file.write('%s\n%s\n' % (num + 1, sub))
+                srt_file.write('%s\n%s' % (num + 1, sub))
 
     def export(self, file_prefix="pooppants"):
         """Export output files for supported filetype"""
         self.export_json("%s.%s" % (file_prefix, 'json'))
         self.export_srt("%s.%s" % (file_prefix, 'srt'))
         self.export_webvtt("%s.%s" % (file_prefix, 'vtt'))
-        self.export_chapters("%s.%s" % (file_prefix, 'chapters.txt'))
+        self.export_webvtt_chapters("%s.%s" % (file_prefix, 'chapters.vtt'))
+        self.export_text_chapters("%s.%s" % (file_prefix, 'chapters.txt'))
         self.export_text("%s.%s" % (file_prefix, 'txt'))
 
 
