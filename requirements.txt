@@ -1,2 +1,4 @@
 beautifulsoup4
 requests
+google-api-python-client
+progressbar2

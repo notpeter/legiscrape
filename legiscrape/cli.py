@@ -26,15 +26,20 @@ def main():
     es_index = url.netloc
     clip_id = dict(parse_qsl(url.query))['clip_id']
     video_url = es_search(es_index, clip_id)
-
     logging.info("Fetching Video MP4 %s", video_url)
     local_mp4 = get(video_url, args.file)
-    logging.info("Fetching JSON from %s", subtitle_url)
-    response = requests.get(subtitle_url)
-    json_data = json.loads(response.text)
-    ttxt = Teletext(json_data)
-    # This creates SRT, WEBVTT, Chapters, etc.
-    ttxt.export(args.file)
+
+    try:
+        # subtitle_url = "http://oakland.granicus.com/videos/%s/captions.vtt" % clip_id
+        subtitle_url = "http://oakland.granicus.com/JSON.php?clip_id=%s" % clip_id
+        logging.info("Fetching Subtitle from %s", subtitle_url)
+        response = requests.get(subtitle_url)
+        subtitle_json = json.loads(response.text)
+        ttxt = Teletext(subtitle_json)
+        # This creates SRT, WEBVTT, Chapters, etc.
+        ttxt.export(args.file)
+    except:
+        logging.error("Error downloading subtitles. Skipping...", exc_info=True)
 
     remux(local_mp4, "%s_FINAL.mp4" % args.file,
           chapter_filename='%s.chapters.txt' % local_mp4,
